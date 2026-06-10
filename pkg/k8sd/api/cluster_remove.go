@@ -22,8 +22,9 @@ import (
 )
 
 // postClusterRemove handles requests to remove a node from the cluster.
-// It will remove the node from etcd, microcluster and from Kubernetes.
-// If force is true, the node is removed on a best-effort basis even if it is not reachable.
+// It will remove the node from Kubernetes, the datastore (etcd / external), and microcluster in this order.
+// All three steps are mandatory: an error from any step is returned to the caller.
+// Not-found conditions are treated as success (removal is idempotent).
 func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.Response {
 	snap := e.provider.Snap()
 
@@ -58,14 +59,8 @@ func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.
 	if _, ok := cfg.Annotations[apiv1_annotations.AnnotationSkipCleanupKubernetesNodeOnRemove]; !ok {
 		log.Info("Remove node from Kubernetes cluster")
 		if err := removeNodeFromKubernetes(ctx, snap, req.Name); err != nil {
-			if req.Force {
-				// With force=true, we want to cleanup all out-of-sync mentions of this node.
-				// It might be that the node is already gone from k8s, but not from microcluster.
-				// So we log the error, but continue.
-				log.Error(err, "Failed to remove node from Kubernetes, but continuing due to force=true")
-			} else {
-				return mctypes.InternalError(fmt.Errorf("failed to remove node from Kubernetes: %w", err))
-			}
+			// client.DeleteNode treats NotFound errors as success.
+			return mctypes.InternalError(fmt.Errorf("failed to remove node from Kubernetes: %w", err))
 		}
 	} else {
 		log.Info("Skipping Kubernetes node removal as per annotation")
@@ -77,22 +72,14 @@ func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.
 	if isControlPlane || req.Force {
 		log.Info("Remove node from datastore")
 		if err := removeNodeFromDatastore(ctx, s, snap, req.Name, cfg); err != nil {
-			if req.Force {
-				// With force=true, we want to cleanup all out-of-sync mentions of this node.
-				// So we log the error, but continue.
-				log.Error(err, "Failed to remove node from datastore, but continuing due to force=true; ignore error for workers", "datastore", cfg.Datastore.GetType())
-			} else {
-				return mctypes.InternalError(fmt.Errorf("failed to delete node from datastore: %w", err))
-			}
+			// NotFound errors are handled as success.
+			return mctypes.InternalError(fmt.Errorf("failed to delete node from datastore: %w", err))
 		}
 
 		log.Info("Remove node from microcluster")
 		if err := removeNodeFromMicrocluster(ctx, s, req.Name, req.Force, snap); err != nil {
-			if req.Force {
-				log.Error(err, "Failed to remove node from microcluster, but continuing due to force=true; ignore error for workers")
-			} else {
-				return mctypes.InternalError(fmt.Errorf("failed to delete node from microcluster: %w", err))
-			}
+			// NotFound errors from RemoveClusterMember are handled as success.
+			return mctypes.InternalError(fmt.Errorf("failed to delete node from microcluster: %w", err))
 		}
 	}
 
