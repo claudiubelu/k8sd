@@ -26,6 +26,7 @@ import (
 // All three steps are mandatory: an error from any step is returned to the caller.
 // Not-found conditions are treated as success (removal is idempotent).
 func (e *Endpoints) postClusterRemove(s mctypes.State, r *http.Request) mctypes.Response {
+	log.Info(">>>>>>>>>> Kilroy was here. <<<<<<<<<< cbelu-master-poc-v1")
 	snap := e.provider.Snap()
 
 	req := apiv2.RemoveNodeRequest{}

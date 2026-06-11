@@ -22,6 +22,7 @@ import (
 // If any step fails, the error is logged, and the cleanup continues, skipping dependent tasks.
 // All steps need to be blocking as the context is cancelled after the hook returned.
 func (a *App) onPreRemove(ctx context.Context, s mctypes.State, force bool) (rerr error) {
+	log.Info(">>>>>>>>>> Kilroy was here. <<<<<<<<<< cbelu-master-poc-v1")
 	snap := a.Snap()
 
 	log := log.FromContext(ctx).WithValues("hook", "preremove", "node", s.Name())
